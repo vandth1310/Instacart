@@ -2,10 +2,7 @@
 """
 Web App Streamlit – Tiểu luận Big Data trong TMĐT
 Phân tích hành vi mua sắm, khai phá giỏ hàng & dự đoán mua lại – Instacart
-(mẫu 10% khách hàng)
-
-Học viên: Đào Thị Hồng Vân (C25611268)
-GVHD: TS. Nguyễn Thôn Dã
+Học viên: Đào Thị Hồng Vân (C25611268) – GVHD: TS. Nguyễn Thôn Dã
 """
 
 import json
@@ -19,27 +16,16 @@ import streamlit as st
 
 
 # ================================================================
-# CẤU HÌNH STREAMLIT
+# CONFIG
 # ================================================================
-
 st.set_page_config(
     page_title="Instacart Big Data Dashboard",
     page_icon="🛒",
     layout="wide"
 )
 
-
-# ================================================================
-# ĐƯỜNG DẪN DỮ LIỆU
-# ================================================================
-# Tất cả file dữ liệu nằm cùng thư mục với app.py trên GitHub.
-
+# Repository root – app.py nằm cùng cấp với các file dữ liệu
 DATA = Path(__file__).resolve().parent
-
-
-# ================================================================
-# CẤU HÌNH GIAO DIỆN
-# ================================================================
 
 SERIES = [
     "#2a78d6",
@@ -94,19 +80,12 @@ FEAT_VI = {
 
 
 # ================================================================
-# HÀM STYLE
+# HELPER
 # ================================================================
-
 def style(fig, h=380):
-
     fig.update_layout(
         height=h,
-        margin=dict(
-            l=10,
-            r=10,
-            t=50,
-            b=10
-        ),
+        margin=dict(l=10, r=10, t=50, b=10),
         font=dict(size=13),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -133,67 +112,66 @@ def style(fig, h=380):
     return fig
 
 
-# ================================================================
-# KIỂM TRA FILE
-# ================================================================
+def find_file(filename):
+    """
+    Tìm file trong repository.
+    Ưu tiên file ở thư mục gốc, sau đó tìm đệ quy trong thư mục con.
+    """
 
-def file_exists(filename):
-    return (DATA / filename).exists()
+    # 1. Tìm ngay tại thư mục chứa app.py
+    exact = DATA / filename
+
+    if exact.is_file():
+        return exact
+
+    # 2. Tìm trong toàn bộ repository
+    matches = list(DATA.rglob(filename))
+
+    if matches:
+        return matches[0]
+
+    # 3. Tìm không phân biệt chữ hoa/chữ thường
+    target = filename.lower()
+
+    for p in DATA.rglob("*"):
+        if p.is_file() and p.name.lower() == target:
+            return p
+
+    return None
+
+
+def required_file(filename):
+    """
+    Lấy file bắt buộc.
+    Nếu không có thì báo lỗi rõ ràng.
+    """
+
+    path = find_file(filename)
+
+    if path is None:
+        raise FileNotFoundError(
+            f"Không tìm thấy file '{filename}' trong repository. "
+            f"Thư mục đang chạy: {DATA}"
+        )
+
+    return path
 
 
 # ================================================================
-# LOAD DỮ LIỆU CHÍNH
+# LOAD DATA
 # ================================================================
-
 @st.cache_resource(show_spinner="Đang nạp dữ liệu mẫu 10%…")
 def load():
 
-    orders_path = DATA / "orders_sample.parquet"
-    lines_path = DATA / "order_products_sample.parquet"
-    products_path = DATA / "products.parquet"
+    orders_path = required_file("orders_sample.parquet")
+    lines_path = required_file("order_products_sample.parquet")
+    products_path = required_file("products.parquet")
 
-    missing = []
+    orders = pd.read_parquet(orders_path)
+    lines = pd.read_parquet(lines_path)
+    prods = pd.read_parquet(products_path)
 
-    if not orders_path.exists():
-        missing.append("orders_sample.parquet")
-
-    if not lines_path.exists():
-        missing.append("order_products_sample.parquet")
-
-    if not products_path.exists():
-        missing.append("products.parquet")
-
-    if missing:
-
-        st.error(
-            "Không tìm thấy file dữ liệu chính: "
-            + ", ".join(missing)
-        )
-
-        st.info(
-            "Hãy upload các file này lên GitHub, "
-            "cùng thư mục với app.py."
-        )
-
-        st.stop()
-
-    orders = pd.read_parquet(
-        orders_path
-    )
-
-    lines = pd.read_parquet(
-        lines_path
-    )
-
-    prods = pd.read_parquet(
-        products_path
-    )
-
-    if "eval_set" in lines.columns:
-        lines["eval_set"] = (
-            lines["eval_set"]
-            .astype("category")
-        )
+    lines["eval_set"] = lines["eval_set"].astype("category")
 
     for c in [
         "product_name",
@@ -201,12 +179,8 @@ def load():
         "department",
         "department_vi"
     ]:
-
         if c in prods.columns:
-            prods[c] = (
-                prods[c]
-                .astype("category")
-            )
+            prods[c] = prods[c].astype("category")
 
     fact = (
         lines
@@ -240,71 +214,16 @@ def load():
 
 
 # ================================================================
-# KPI FALLBACK
+# LOAD SMALL / MODEL FILES
 # ================================================================
-
-def create_kpi_from_data(orders, lines):
-
-    try:
-        so_khach_hang = int(
-            orders.user_id.nunique()
-        )
-    except Exception:
-        so_khach_hang = 0
-
-    try:
-        so_don_hang = int(
-            len(orders)
-        )
-    except Exception:
-        so_don_hang = 0
-
-    try:
-        so_dong_san_pham = int(
-            len(lines)
-        )
-    except Exception:
-        so_dong_san_pham = 0
-
-    try:
-        gio_hang_tb = float(
-            lines
-            .groupby("order_id")
-            .size()
-            .mean()
-        )
-    except Exception:
-        gio_hang_tb = 0
-
-    try:
-        ty_le_mua_lai = float(
-            lines.reordered.mean()
-        )
-    except Exception:
-        ty_le_mua_lai = 0
-
-    return {
-        "so_khach_hang": so_khach_hang,
-        "so_don_hang": so_don_hang,
-        "so_dong_san_pham": so_dong_san_pham,
-        "gio_hang_tb": gio_hang_tb,
-        "ty_le_mua_lai": ty_le_mua_lai
-    }
-
-
-# ================================================================
-# LOAD DỮ LIỆU PHỤ
-# ================================================================
-
 @st.cache_data
-def load_small(orders, lines):
+def load_small():
 
     result = {}
 
     # ------------------------------------------------------------
     # CSV
     # ------------------------------------------------------------
-
     csv_files = {
         "rules_p": "rules_product_full.csv",
         "rules_a": "rules_aisle_full.csv",
@@ -316,152 +235,114 @@ def load_small(orders, lines):
 
     for key, filename in csv_files.items():
 
-        path = DATA / filename
+        path = find_file(filename)
 
-        if path.exists():
-
-            try:
-                result[key] = pd.read_csv(path)
-
-            except Exception as e:
-
-                st.warning(
-                    f"Không đọc được {filename}: {e}"
-                )
-
-        else:
-
-            result[key] = pd.DataFrame()
-
-
-    # ------------------------------------------------------------
-    # KPI
-    # ------------------------------------------------------------
-
-    kpi_path = DATA / "kpi_full.json"
-
-    if kpi_path.exists():
-
-        try:
-
-            with open(
-                kpi_path,
-                encoding="utf-8"
-            ) as f:
-
-                result["kpi"] = json.load(f)
-
-        except Exception:
-
-            result["kpi"] = create_kpi_from_data(
-                orders,
-                lines
+        if path is None:
+            raise FileNotFoundError(
+                f"Không tìm thấy file '{filename}' trong repository."
             )
 
-    else:
+        result[key] = pd.read_csv(path)
 
-        result["kpi"] = create_kpi_from_data(
-            orders,
-            lines
+    # ------------------------------------------------------------
+    # KPI JSON
+    # ------------------------------------------------------------
+    kpi_path = find_file("kpi_full.json")
+
+    if kpi_path is None:
+        raise FileNotFoundError(
+            "Không tìm thấy file 'kpi_full.json'."
         )
 
+    with open(kpi_path, "r", encoding="utf-8") as f:
+        result["kpi"] = json.load(f)
 
     # ------------------------------------------------------------
     # LOGISTIC REGRESSION MODEL
     # ------------------------------------------------------------
+    lr_path = find_file("lr_model.json")
 
-    lr_path = DATA / "lr_model.json"
-
-    if lr_path.exists():
+    if lr_path is not None:
 
         try:
-
-            with open(
-                lr_path,
-                encoding="utf-8"
-            ) as f:
-
+            with open(lr_path, "r", encoding="utf-8") as f:
                 result["lr"] = json.load(f)
 
-        except Exception:
+        except Exception as e:
 
             result["lr"] = None
+            result["lr_error"] = str(e)
 
     else:
 
         result["lr"] = None
-
+        result["lr_error"] = (
+            "Không tìm thấy lr_model.json"
+        )
 
     # ------------------------------------------------------------
     # PRODUCT FEATURES
     # ------------------------------------------------------------
+    pfeat_path = find_file(
+        "product_features_full.parquet"
+    )
 
-    pfeat_path = DATA / "product_features_full.parquet"
-
-    if pfeat_path.exists():
+    if pfeat_path is not None:
 
         try:
-
             result["pfeat"] = pd.read_parquet(
                 pfeat_path
             )
 
-        except Exception:
+        except Exception as e:
 
             result["pfeat"] = None
+            result["pfeat_error"] = str(e)
 
     else:
 
         result["pfeat"] = None
-
+        result["pfeat_error"] = (
+            "Không tìm thấy product_features_full.parquet"
+        )
 
     # ------------------------------------------------------------
     # USER SEGMENTS
     # ------------------------------------------------------------
+    useg_path = find_file(
+        "user_segments_sample.parquet"
+    )
 
-    useg_path = DATA / "user_segments_sample.parquet"
-
-    if useg_path.exists():
+    if useg_path is not None:
 
         try:
-
             result["useg"] = pd.read_parquet(
                 useg_path
             )
 
         except Exception:
-
             result["useg"] = None
 
     else:
 
         result["useg"] = None
 
-
     return result
 
 
 # ================================================================
-# LOAD DATA
+# LOAD EVERYTHING
 # ================================================================
-
 orders, lines, prods, fact = load()
-
-S = load_small(
-    orders,
-    lines
-)
+S = load_small()
 
 
 # ================================================================
 # SIDEBAR
 # ================================================================
-
 with st.sidebar:
 
-    st.markdown(
-        "### 🛒 Instacart Big Data"
-    )
+    st.markdown("### 🛒 Instacart Big Data")
 
     st.caption(
         "Tiểu luận môn **Nghiên cứu Dữ liệu lớn trong TMĐT**  \n"
@@ -476,9 +357,7 @@ with st.sidebar:
     )
 
     dept_opts = sorted(
-        prods[
-            "department_vi"
-        ]
+        prods["department_vi"]
         .dropna()
         .unique()
         .tolist()
@@ -512,45 +391,34 @@ with st.sidebar:
 # ================================================================
 # FILTER
 # ================================================================
-
 fx = fact
 
 if f_dept:
-
     fx = fx[
-        fx["department_vi"]
-        .isin(f_dept)
+        fx["department_vi"].isin(f_dept)
     ]
 
 if f_dow:
-
     fx = fx[
-        fx["order_dow"]
-        .isin(
-            [
-                DOW_VI.index(d)
-                for d in f_dow
-            ]
+        fx["order_dow"].isin(
+            [DOW_VI.index(d) for d in f_dow]
         )
     ]
 
-if f_dept or f_dow:
-
-    ox = orders[
+ox = (
+    orders[
         orders["order_id"].isin(
             fx["order_id"].unique()
         )
     ]
-
-else:
-
-    ox = orders
+    if (f_dept or f_dow)
+    else orders
+)
 
 
 # ================================================================
-# TITLE
+# HEADER
 # ================================================================
-
 st.title(
     "🛒 Phân tích hành vi mua sắm & khai phá giỏ hàng – Instacart"
 )
@@ -574,27 +442,20 @@ tabs = st.tabs(
 
 
 # ================================================================
-# RQ0 – TỔNG QUAN
+# TỔNG QUAN
 # ================================================================
-
 with tabs[0]:
 
     k = S["kpi"]
 
     c = st.columns(5)
 
-    try:
-
-        bs = (
-            lines
-            .groupby("order_id")
-            .size()
-            .mean()
-        )
-
-    except Exception:
-
-        bs = 0
+    bs = (
+        lines
+        .groupby("order_id")
+        .size()
+        .mean()
+    )
 
     tiles = [
         (
@@ -619,25 +480,18 @@ with tabs[0]:
         ),
         (
             "Tỷ lệ mua lại",
-            f"{lines.reordered.mean()*100:.1f}%",
-            f"{k['ty_le_mua_lai']*100:.1f}%"
+            f"{lines.reordered.mean() * 100:.1f}%",
+            f"{k['ty_le_mua_lai'] * 100:.1f}%"
         )
     ]
 
-    for col, (lab, v, full) in zip(
-        c,
-        tiles
-    ):
+    for col, (lab, v, full) in zip(c, tiles):
 
-        col.metric(
-            lab,
-            v
-        )
+        col.metric(lab, v)
 
         col.caption(
             f"Toàn bộ dữ liệu: **{full}**"
         )
-
 
     st.markdown(
         "#### Kiểm định tính đại diện của mẫu 10%"
@@ -645,55 +499,34 @@ with tabs[0]:
 
     comp = S["comp"].copy()
 
-    if not comp.empty:
+    def fmt(x):
 
-        def fmt(x):
+        try:
+            f = float(x)
 
-            try:
+            if f.is_integer() and f > 1000:
+                return f"{f:,.0f}"
 
-                f = float(x)
+            return f"{f:,.2f}"
 
-                if f.is_integer() and f > 1000:
+        except (ValueError, TypeError):
+            return x
 
-                    return f"{f:,.0f}"
+    for col_ in [
+        "Toàn bộ (100%)",
+        "Mẫu 10%"
+    ]:
 
-                return f"{f:,.2f}"
+        if col_ in comp.columns:
+            comp[col_] = comp[col_].map(fmt)
 
-            except Exception:
-
-                return x
-
-        for col_ in [
-            "Toàn bộ (100%)",
-            "Mẫu 10%"
-        ]:
-
-            if col_ in comp.columns:
-
-                comp[col_] = comp[col_].map(fmt)
-
-        st.dataframe(
-            comp,
-            hide_index=True,
-            use_container_width=True
-        )
-
-    else:
-
-        st.info(
-            "Không có file sample_vs_full.csv. "
-            "Dashboard vẫn hoạt động với dữ liệu mẫu."
-        )
-
-
-    st.info(
-        "Mẫu được lấy **theo khách hàng** "
-        "(giữ trọn lịch sử mua của mỗi khách) "
-        "nên các chỉ số hành vi của mẫu gần như trùng khớp "
-        "với toàn bộ dữ liệu, đủ tin cậy để minh họa trực quan "
-        "và chạy thử mô hình trên web."
+    st.dataframe(
+        comp,
+        hide_index=True,
+        use_container_width=True
     )
 
+    # Đã bỏ hoàn toàn đoạn st.info cũ
 
     st.markdown(
         "#### Kiến trúc hệ thống"
@@ -713,9 +546,8 @@ with tabs[0]:
 
 
 # ================================================================
-# RQ1 – THỜI GIAN
+# RQ1
 # ================================================================
-
 with tabs[1]:
 
     st.subheader(
@@ -731,13 +563,8 @@ with tabs[1]:
             ]
         )
         .size()
-        .unstack(
-            fill_value=0
-        )
-        .reindex(
-            range(7),
-            fill_value=0
-        )
+        .unstack(fill_value=0)
+        .reindex(range(7), fill_value=0)
     )
 
     hm.index = DOW_VI
@@ -746,20 +573,16 @@ with tabs[1]:
         hm,
         color_continuous_scale=BLUE_SEQ,
         aspect="auto",
-        labels={
-            "x": "Giờ trong ngày",
-            "y": "",
-            "color": "Số đơn"
-        },
+        labels=dict(
+            x="Giờ trong ngày",
+            y="",
+            color="Số đơn"
+        ),
         title="Ma trận mật độ đơn hàng: ngày × giờ"
     )
 
     fig.update_traces(
-        hovertemplate=(
-            "%{y}, %{x}h: "
-            "%{z:,} đơn"
-            "<extra></extra>"
-        )
+        hovertemplate="%{y}, %{x}h: %{z:,} đơn<extra></extra>"
     )
 
     st.plotly_chart(
@@ -767,36 +590,25 @@ with tabs[1]:
         use_container_width=True
     )
 
-
     c1, c2 = st.columns(2)
-
 
     hr = (
         ox
-        .groupby(
-            "order_hour_of_day"
-        )
+        .groupby("order_hour_of_day")
         .size()
-        .reset_index(
-            name="n"
-        )
+        .reset_index(name="n")
     )
 
     hr["pct"] = (
-        hr.n
-        / hr.n.sum()
-        * 100
+        hr.n / hr.n.sum() * 100
     )
-
 
     fig = px.area(
         hr,
         x="order_hour_of_day",
         y="pct",
         title="Tỷ trọng đơn theo giờ (%)",
-        color_discrete_sequence=[
-            SERIES[0]
-        ],
+        color_discrete_sequence=[SERIES[0]],
         labels={
             "order_hour_of_day": "Giờ",
             "pct": "% đơn"
@@ -804,10 +616,7 @@ with tabs[1]:
     )
 
     fig.update_traces(
-        hovertemplate=(
-            "%{x}h: %{y:.2f}%"
-            "<extra></extra>"
-        )
+        hovertemplate="%{x}h: %{y:.2f}%<extra></extra>"
     )
 
     c1.plotly_chart(
@@ -815,100 +624,67 @@ with tabs[1]:
         use_container_width=True
     )
 
-
     gp = (
         ox
         .dropna(
-            subset=[
-                "days_since_prior_order"
-            ]
+            subset=["days_since_prior_order"]
         )
-        .groupby(
-            "days_since_prior_order"
-        )
+        .groupby("days_since_prior_order")
         .size()
-        .reset_index(
-            name="n"
-        )
+        .reset_index(name="n")
     )
 
-    if len(gp):
+    gp["pct"] = (
+        gp.n / gp.n.sum() * 100
+    )
 
-        gp["pct"] = (
-            gp.n
-            / gp.n.sum()
-            * 100
-        )
+    gp["loại"] = np.where(
+        gp.days_since_prior_order.isin([7, 30]),
+        "Đỉnh chu kỳ",
+        "Khác"
+    )
 
-        gp["loại"] = np.where(
-            gp.days_since_prior_order.isin(
-                [7, 30]
-            ),
-            "Đỉnh chu kỳ",
-            "Khác"
-        )
+    fig = px.bar(
+        gp,
+        x="days_since_prior_order",
+        y="pct",
+        color="loại",
+        color_discrete_map={
+            "Đỉnh chu kỳ": SERIES[1],
+            "Khác": SERIES[0]
+        },
+        title="Chu kỳ quay lại mua (ngày kể từ đơn trước)",
+        labels={
+            "days_since_prior_order": "Ngày",
+            "pct": "% đơn",
+            "loại": ""
+        }
+    )
 
-        fig = px.bar(
-            gp,
-            x="days_since_prior_order",
-            y="pct",
-            color="loại",
-            color_discrete_map={
-                "Đỉnh chu kỳ": SERIES[1],
-                "Khác": SERIES[0]
-            },
-            title=(
-                "Chu kỳ quay lại mua "
-                "(ngày kể từ đơn trước)"
-            ),
-            labels={
-                "days_since_prior_order": "Ngày",
-                "pct": "% đơn",
-                "loại": ""
-            }
-        )
+    fig.update_traces(
+        hovertemplate="%{x} ngày: %{y:.2f}%<extra></extra>"
+    )
 
-        fig.update_traces(
-            hovertemplate=(
-                "%{x} ngày: %{y:.2f}%"
-                "<extra></extra>"
-            )
-        )
+    c2.plotly_chart(
+        style(fig, 330),
+        use_container_width=True
+    )
 
-        c2.plotly_chart(
-            style(fig, 330),
-            use_container_width=True
-        )
+    peak = hr.loc[hr.pct.idxmax()]
 
-        peak = hr.loc[
-            hr.pct.idxmax()
-        ]
-
-        within_7 = gp.loc[
-            gp.days_since_prior_order <= 7,
-            "pct"
-        ].sum()
-
-        at_30 = gp.loc[
-            gp.days_since_prior_order == 30,
-            "pct"
-        ].sum()
-
-        st.success(
-            f"Đỉnh đặt hàng lúc "
-            f"**{int(peak.order_hour_of_day)}h** "
-            f"({peak.pct:.2f}% đơn). "
-            f"{within_7:.1f}% đơn quay lại "
-            f"trong vòng 7 ngày; "
-            f"{at_30:.1f}% đơn cách đơn trước "
-            f"≥ 30 ngày."
-        )
+    st.success(
+        f"Đỉnh đặt hàng lúc **{int(peak.order_hour_of_day)}h** "
+        f"({peak.pct:.2f}% đơn). "
+        f"{gp.loc[gp.days_since_prior_order <= 7, 'pct'].sum():.1f}% "
+        f"đơn quay lại trong vòng 7 ngày; "
+        f"{gp.loc[gp.days_since_prior_order == 30, 'pct'].sum():.1f}% "
+        f"đơn cách đơn trước ≥ 30 ngày."
+    )
 
 
 # ================================================================
-# RQ2 – SẢN PHẨM
+# RQ2
 # ================================================================
-
 with tabs[2]:
 
     st.subheader(
@@ -922,7 +698,6 @@ with tabs[2]:
         20,
         step=5
     )
-
 
     top = (
         fx
@@ -943,42 +718,28 @@ with tabs[2]:
         .sort_values("n")
     )
 
-
     fig = px.bar(
         top,
         x="n",
         y="product_name",
         orientation="h",
         title=f"Top {n_top} sản phẩm theo lượt mua",
-        color_discrete_sequence=[
-            SERIES[0]
-        ],
+        color_discrete_sequence=[SERIES[0]],
         labels={
             "n": "Lượt mua",
             "product_name": ""
         },
-        custom_data=[
-            top.rr * 100
-        ]
+        custom_data=[top.rr * 100]
     )
 
     fig.update_traces(
-        hovertemplate=(
-            "%{y}<br>"
-            "%{x:,} lượt · "
-            "mua lại %{customdata[0]:.1f}%"
-            "<extra></extra>"
-        )
+        hovertemplate="%{y}<br>%{x:,} lượt · mua lại %{customdata[0]:.1f}%<extra></extra>"
     )
 
     st.plotly_chart(
-        style(
-            fig,
-            24 * n_top + 120
-        ),
+        style(fig, 24 * n_top + 120),
         use_container_width=True
     )
-
 
     dp = (
         fact
@@ -995,16 +756,10 @@ with tabs[2]:
     )
 
     dp["share"] = (
-        dp.n
-        / dp.n.sum()
-        * 100
+        dp.n / dp.n.sum() * 100
     )
 
-
-    c1, c2 = st.columns(
-        [1.3, 1]
-    )
-
+    c1, c2 = st.columns([1.3, 1])
 
     dp["nhãn"] = np.where(
         dp["share"].rank(
@@ -1013,7 +768,6 @@ with tabs[2]:
         dp["department_vi"].astype(str),
         ""
     )
-
 
     fig = px.scatter(
         dp,
@@ -1024,13 +778,8 @@ with tabs[2]:
         log_x=True,
         size_max=40,
         hover_name="department_vi",
-        color_discrete_sequence=[
-            SERIES[0]
-        ],
-        title=(
-            "Ngành hàng: tỷ trọng lượt mua "
-            "vs. tỷ lệ mua lại"
-        ),
+        color_discrete_sequence=[SERIES[0]],
+        title="Ngành hàng: tỷ trọng lượt mua vs. tỷ lệ mua lại",
         labels={
             "share": "Tỷ trọng lượt mua (%, log)",
             "y": "Tỷ lệ mua lại (%)",
@@ -1041,19 +790,13 @@ with tabs[2]:
     fig.update_traces(
         textposition="top center",
         textfont_size=11,
-        hovertemplate=(
-            "%{hovertext}<br>"
-            "Tỷ trọng %{x:.2f}% · "
-            "Mua lại %{y:.1f}%"
-            "<extra></extra>"
-        )
+        hovertemplate="%{hovertext}<br>Tỷ trọng %{x:.2f}% · Mua lại %{y:.1f}%<extra></extra>"
     )
 
     c1.plotly_chart(
         style(fig, 460),
         use_container_width=True
     )
-
 
     bsz = (
         fx
@@ -1070,18 +813,12 @@ with tabs[2]:
         "n"
     ]
 
-
     fig = px.bar(
         bsz,
         x="size",
         y="n",
-        title=(
-            "Kích thước giỏ hàng "
-            "(≥ 50 gộp vào cột 50)"
-        ),
-        color_discrete_sequence=[
-            SERIES[0]
-        ],
+        title="Kích thước giỏ hàng (≥ 50 gộp vào cột 50)",
+        color_discrete_sequence=[SERIES[0]],
         labels={
             "size": "Số SP/đơn",
             "n": "Số đơn"
@@ -1089,10 +826,7 @@ with tabs[2]:
     )
 
     fig.update_traces(
-        hovertemplate=(
-            "%{x} SP: %{y:,} đơn"
-            "<extra></extra>"
-        )
+        hovertemplate="%{x} SP: %{y:,} đơn<extra></extra>"
     )
 
     c2.plotly_chart(
@@ -1100,79 +834,63 @@ with tabs[2]:
         use_container_width=True
     )
 
-
     st.markdown(
         "##### 🔎 Tra cứu nhanh một sản phẩm"
     )
 
-
-    product_list = (
-        top
-        .sort_values(
+    product_choices = (
+        top.sort_values(
             "n",
             ascending=False
         )
         .product_name
         .tolist()
+        +
+        sorted(
+            set(prods.product_name.astype(str))
+            -
+            set(top.product_name.astype(str))
+        )[:3000]
     )
 
-    other_products = sorted(
-        set(
-            prods.product_name.astype(str)
-        )
-        -
-        set(
-            top.product_name.astype(str)
-        )
-    )[:3000]
-
-    product_options = (
-        product_list
-        + other_products
+    pick = st.selectbox(
+        "Chọn sản phẩm",
+        product_choices,
+        index=0
     )
 
+    sub = fact[
+        fact.product_name == pick
+    ]
 
-    if product_options:
+    if len(sub):
 
-        pick = st.selectbox(
-            "Chọn sản phẩm",
-            product_options,
-            index=0
+        c = st.columns(4)
+
+        c[0].metric(
+            "Lượt mua (mẫu)",
+            f"{len(sub):,}"
         )
 
-        sub = fact[
-            fact.product_name == pick
-        ]
+        c[1].metric(
+            "Số khách đã mua",
+            f"{sub.user_id.nunique():,}"
+        )
 
-        if len(sub):
+        c[2].metric(
+            "Tỷ lệ mua lại",
+            f"{sub.reordered.mean() * 100:.1f}%"
+        )
 
-            c = st.columns(4)
-
-            c[0].metric(
-                "Lượt mua (mẫu)",
-                f"{len(sub):,}"
-            )
-
-            c[1].metric(
-                "Số khách đã mua",
-                f"{sub.user_id.nunique():,}"
-            )
-
-            c[2].metric(
-                "Tỷ lệ mua lại",
-                f"{sub.reordered.mean()*100:.1f}%"
-            )
-
-            c[3].metric(
-                "Vị trí TB trong giỏ",
-                f"{sub.add_to_cart_order.mean():.1f}"
-            )
+        c[3].metric(
+            "Vị trí TB trong giỏ",
+            f"{sub.add_to_cart_order.mean():.1f}"
+        )
 
 
 # ================================================================
-# RQ3 – GIỎ HÀNG
+# RQ3
 # ================================================================
-
 with tabs[3]:
 
     st.subheader(
@@ -1180,11 +898,9 @@ with tabs[3]:
     )
 
     st.caption(
-        "Luật kết hợp khai phá bằng "
-        "**FP-Growth (Spark MLlib)** "
+        "Luật kết hợp khai phá bằng **FP-Growth (Spark MLlib)** "
         "trên toàn bộ 3,2 triệu giỏ hàng prior."
     )
-
 
     level = st.radio(
         "Cấp phân tích",
@@ -1195,799 +911,607 @@ with tabs[3]:
         horizontal=True
     )
 
-
     R = (
         S["rules_p"]
         if level == "Sản phẩm"
         else S["rules_a"]
     )
 
+    c1, c2, c3 = st.columns(3)
 
-    if R.empty:
+    mlift = c1.slider(
+        "Lift tối thiểu",
+        0.0,
+        float(np.ceil(R.lift.max())),
+        1.0,
+        0.1
+    )
 
-        st.warning(
-            "Không tìm thấy file luật kết hợp "
-            "tương ứng trên GitHub."
-        )
+    mconf = c2.slider(
+        "Confidence tối thiểu (%)",
+        0,
+        int(R.confidence.max() * 100),
+        0
+    )
 
-    else:
+    kw = c3.text_input(
+        "Lọc theo từ khóa (vd: Banana, yogurt)"
+    )
 
-        c1, c2, c3 = st.columns(3)
+    Rf = R[
+        (R.lift >= mlift)
+        &
+        (R.confidence * 100 >= mconf)
+    ]
 
+    if kw:
 
-        mlift = c1.slider(
-            "Lift tối thiểu",
-            0.0,
-            float(
-                np.ceil(
-                    R.lift.max()
-                )
-            ),
-            1.0,
-            0.1
-        )
-
-
-        mconf = c2.slider(
-            "Confidence tối thiểu (%)",
-            0,
-            int(
-                R.confidence.max()
-                * 100
-            ),
-            0
-        )
-
-
-        kw = c3.text_input(
-            "Lọc theo từ khóa "
-            "(vd: Banana, yogurt)"
-        )
-
-
-        Rf = R[
-            (R.lift >= mlift)
-            &
-            (
-                R.confidence * 100
-                >= mconf
+        Rf = Rf[
+            Rf.antecedent.str.contains(
+                kw,
+                case=False
+            )
+            |
+            Rf.consequent.str.contains(
+                kw,
+                case=False
             )
         ]
 
+    st.write(
+        f"**{len(Rf):,}** luật thỏa điều kiện "
+        f"(tổng {len(R):,})."
+    )
 
-        if kw:
-
-            Rf = Rf[
-                Rf.antecedent.str.contains(
-                    kw,
-                    case=False
-                )
-                |
-                Rf.consequent.str.contains(
-                    kw,
-                    case=False
-                )
-            ]
-
-
-        st.write(
-            f"**{len(Rf):,}** luật thỏa điều kiện "
-            f"(tổng {len(R):,})."
+    show = (
+        Rf
+        .sort_values(
+            "lift",
+            ascending=False
         )
+        .copy()
+    )
 
+    show["support (%)"] = (
+        show.support * 100
+    ).round(3)
 
-        show = (
-            Rf
-            .sort_values(
+    show["confidence (%)"] = (
+        show.confidence * 100
+    ).round(2)
+
+    show["lift"] = (
+        show.lift
+    ).round(3)
+
+    st.dataframe(
+        show[
+            [
+                "antecedent",
+                "consequent",
+                "support (%)",
+                "confidence (%)",
                 "lift",
-                ascending=False
-            )
-            .copy()
-        )
-
-
-        show["support (%)"] = (
-            show.support * 100
-        ).round(3)
-
-        show["confidence (%)"] = (
-            show.confidence * 100
-        ).round(2)
-
-        show["lift"] = (
-            show.lift
-        ).round(3)
-
-
-        st.dataframe(
-            show[
-                [
-                    "antecedent",
-                    "consequent",
-                    "support (%)",
-                    "confidence (%)",
-                    "lift",
-                    "freq_xy"
-                ]
+                "freq_xy"
             ]
-            .rename(
-                columns={
-                    "antecedent": "Nếu mua (X)",
-                    "consequent": "Thì mua (Y)",
-                    "freq_xy": "Số giỏ chứa X∪Y"
-                }
-            ),
-            hide_index=True,
-            use_container_width=True,
-            height=320
+        ]
+        .rename(
+            columns={
+                "antecedent": "Nếu mua (X)",
+                "consequent": "Thì mua (Y)",
+                "freq_xy": "Số giỏ chứa X∪Y"
+            }
+        ),
+        hide_index=True,
+        use_container_width=True,
+        height=320
+    )
+
+    if len(Rf):
+
+        fig = px.scatter(
+            Rf,
+            x=Rf.support * 100,
+            y=Rf.confidence * 100,
+            color="lift",
+            color_continuous_scale=BLUE_SEQ[2:],
+            hover_data={
+                "antecedent": True,
+                "consequent": True
+            },
+            title="Không gian support – confidence (màu = lift)",
+            labels={
+                "x": "Support (%)",
+                "y": "Confidence (%)"
+            }
         )
 
-
-        if len(Rf):
-
-            fig = px.scatter(
-                Rf,
-                x=Rf.support * 100,
-                y=Rf.confidence * 100,
-                color="lift",
-                color_continuous_scale=BLUE_SEQ[2:],
-                hover_data={
-                    "antecedent": True,
-                    "consequent": True
-                },
-                title=(
-                    "Không gian support – confidence "
-                    "(màu = lift)"
-                ),
-                labels={
-                    "x": "Support (%)",
-                    "y": "Confidence (%)"
-                }
-            )
-
-            fig.update_traces(
-                marker=dict(
-                    size=10,
-                    line=dict(
-                        width=1,
-                        color="white"
-                    )
+        fig.update_traces(
+            marker=dict(
+                size=10,
+                line=dict(
+                    width=1,
+                    color="white"
                 )
             )
-
-            st.plotly_chart(
-                style(fig, 400),
-                use_container_width=True
-            )
-
-
-        st.markdown(
-            "##### 🛍️ Gợi ý mua kèm "
-            "(tính trực tiếp trên mẫu 10%)"
         )
 
-
-        popular = (
-            fact.product_name
-            .value_counts()
-            .head(300)
-            .index
-            .astype(str)
-            .tolist()
+        st.plotly_chart(
+            style(fig, 400),
+            use_container_width=True
         )
 
+    st.markdown(
+        "##### 🛍️ Gợi ý mua kèm (tính trực tiếp trên mẫu 10%)"
+    )
 
-        if popular:
+    popular = (
+        fact.product_name
+        .value_counts()
+        .head(300)
+        .index
+        .astype(str)
+        .tolist()
+    )
 
-            anchor = st.selectbox(
-                "Khi khách thêm vào giỏ…",
-                popular,
-                index=0
+    anchor = st.selectbox(
+        "Khi khách thêm vào giỏ…",
+        popular,
+        index=0
+    )
+
+    prior = fact[
+        fact.eval_set == "prior"
+    ]
+
+    n_orders = prior.order_id.nunique()
+
+    oid = prior.loc[
+        prior.product_name == anchor,
+        "order_id"
+    ].unique()
+
+    co = (
+        prior[
+            prior.order_id.isin(oid)
+            &
+            (prior.product_name != anchor)
+        ]
+        .groupby(
+            "product_name",
+            observed=True
+        )
+        .size()
+    )
+
+    base = (
+        prior
+        .groupby(
+            "product_name",
+            observed=True
+        )
+        .size()
+    )
+
+    rec = pd.DataFrame(
+        {
+            "cùng giỏ": co
+        }
+    ).join(
+        base.rename("tổng")
+    )
+
+    rec = rec[
+        (
+            rec["cùng giỏ"]
+            >= max(
+                30,
+                0.005 * len(oid)
             )
+        )
+        &
+        (
+            rec["tổng"]
+            >= 200
+        )
+    ]
 
+    rec["confidence (%)"] = (
+        rec["cùng giỏ"]
+        / len(oid)
+        * 100
+    )
 
-            prior = fact[
-                fact.eval_set == "prior"
-            ]
+    rec["lift"] = (
+        rec["cùng giỏ"] / len(oid)
+    ) / (
+        rec["tổng"] / n_orders
+    )
 
+    rec = (
+        rec
+        .sort_values(
+            "lift",
+            ascending=False
+        )
+        .head(10)
+        .reset_index()
+        .rename(
+            columns={
+                "product_name": "Gợi ý",
+                "cùng giỏ": "Số giỏ cùng mua",
+                "tổng": "Tổng số giỏ có SP"
+            }
+        )
+    )
 
-            n_orders = (
-                prior.order_id
-                .nunique()
-            )
+    st.caption(
+        f"Tính trên {len(oid):,} giỏ hàng "
+        f"(mẫu 10%) có chứa sản phẩm đã chọn; "
+        "chỉ xét sản phẩm xuất hiện trong ≥ 0,5% số giỏ đó."
+    )
 
-
-            oid = prior.loc[
-                prior.product_name == anchor,
-                "order_id"
-            ].unique()
-
-
-            co = (
-                prior[
-                    prior.order_id.isin(oid)
-                    &
-                    (
-                        prior.product_name
-                        != anchor
-                    )
-                ]
-                .groupby(
-                    "product_name",
-                    observed=True
-                )
-                .size()
-            )
-
-
-            base = (
-                prior
-                .groupby(
-                    "product_name",
-                    observed=True
-                )
-                .size()
-            )
-
-
-            rec = pd.DataFrame(
-                {
-                    "cùng giỏ": co
-                }
-            ).join(
-                base.rename("tổng")
-            )
-
-
-            rec = rec[
-                (
-                    rec["cùng giỏ"]
-                    >= max(
-                        30,
-                        0.005 * len(oid)
-                    )
-                )
-                &
-                (
-                    rec["tổng"]
-                    >= 200
-                )
-            ]
-
-
-            if len(rec):
-
-                rec["confidence (%)"] = (
-                    rec["cùng giỏ"]
-                    / len(oid)
-                    * 100
-                )
-
-                rec["lift"] = (
-                    (
-                        rec["cùng giỏ"]
-                        / len(oid)
-                    )
-                    /
-                    (
-                        rec["tổng"]
-                        / n_orders
-                    )
-                )
-
-
-                rec = (
-                    rec
-                    .sort_values(
-                        "lift",
-                        ascending=False
-                    )
-                    .head(10)
-                    .reset_index()
-                    .rename(
-                        columns={
-                            "product_name": "Gợi ý",
-                            "cùng giỏ": "Số giỏ cùng mua",
-                            "tổng": "Tổng số giỏ có SP"
-                        }
-                    )
-                )
-
-
-                st.caption(
-                    f"Tính trên {len(oid):,} "
-                    f"giỏ hàng (mẫu 10%) "
-                    f"có chứa sản phẩm đã chọn; "
-                    f"chỉ xét sản phẩm xuất hiện "
-                    f"trong ≥ 0,5% số giỏ đó."
-                )
-
-
-                st.dataframe(
-                    rec.round(2),
-                    hide_index=True,
-                    use_container_width=True
-                )
+    st.dataframe(
+        rec.round(2),
+        hide_index=True,
+        use_container_width=True
+    )
 
 
 # ================================================================
-# RQ4 – PHÂN KHÚC
+# RQ4
 # ================================================================
-
 with tabs[4]:
 
     st.subheader(
         "RQ4 – Khách hàng thuộc những phân khúc hành vi nào?"
     )
 
-
     seg = S["seg"]
 
+    c1, c2 = st.columns(
+        [1, 1.2]
+    )
 
-    if seg.empty:
+    fig = px.bar(
+        seg.sort_values("n_users"),
+        x="n_users",
+        y="segment",
+        orientation="h",
+        color="segment",
+        color_discrete_sequence=SERIES,
+        title="Quy mô phân khúc (K-Means, 100% khách hàng)",
+        labels={
+            "n_users": "Số khách hàng",
+            "segment": ""
+        },
+        custom_data=["share"]
+    )
 
-        st.warning(
-            "Không tìm thấy segment_profile_full.csv."
+    fig.update_traces(
+        hovertemplate="%{y}: %{x:,} KH (%{customdata[0]:.1f}%)<extra></extra>"
+    )
+
+    fig.update_layout(
+        showlegend=False
+    )
+
+    c1.plotly_chart(
+        style(fig, 360),
+        use_container_width=True
+    )
+
+    t = seg[
+        [
+            "segment",
+            "n_users",
+            "share",
+            "recency",
+            "frequency",
+            "monetary_items",
+            "avg_gap_days",
+            "avg_basket",
+            "reorder_ratio"
+        ]
+    ].copy()
+
+    t.columns = [
+        "Phân khúc",
+        "Số KH",
+        "Tỷ trọng %",
+        "Recency (ngày)",
+        "Số đơn",
+        "Tổng SP đã mua",
+        "Chu kỳ TB (ngày)",
+        "Giỏ TB",
+        "Tỷ lệ mua lại"
+    ]
+
+    c2.dataframe(
+        t.round(2),
+        hide_index=True,
+        use_container_width=True
+    )
+
+    st.markdown(
+        "##### 🎯 Chiến lược marketing gợi ý"
+    )
+
+    for _, r in seg.iterrows():
+
+        st.markdown(
+            f"- **{r['segment']}** "
+            f"({r['share']:.1f}%): "
+            f"{r['strategy']}"
         )
 
-    else:
+    st.markdown(
+        "##### 🧪 Thử nghiệm phân cụm lại trên mẫu 10% (scikit-learn)"
+    )
 
-        c1, c2 = st.columns(
-            [1, 1.2]
-        )
+    k_sel = st.slider(
+        "Số cụm k",
+        2,
+        8,
+        4
+    )
 
+    ptr = orders[
+        orders.eval_set == "prior"
+    ]
 
-        fig = px.bar(
-            seg.sort_values(
-                "n_users"
-            ),
-            x="n_users",
-            y="segment",
-            orientation="h",
-            color="segment",
-            color_discrete_sequence=SERIES,
-            title=(
-                "Quy mô phân khúc "
-                "(K-Means, 100% khách hàng)"
-            ),
-            labels={
-                "n_users": "Số khách hàng",
-                "segment": ""
-            },
-            custom_data=["share"]
-        )
-
-
-        fig.update_traces(
-            hovertemplate=(
-                "%{y}: %{x:,} KH "
-                "(%{customdata[0]:.1f}%)"
-                "<extra></extra>"
+    uf = (
+        ptr
+        .groupby("user_id")
+        .agg(
+            frequency=("order_id", "size"),
+            avg_gap_days=(
+                "days_since_prior_order",
+                "mean"
             )
         )
+    )
 
+    uf = uf.join(
+        orders[
+            orders.eval_set != "prior"
+        ]
+        .set_index("user_id")
+        ["days_since_prior_order"]
+        .rename("recency")
+    )
 
-        fig.update_layout(
-            showlegend=False
+    li = (
+        fact[
+            fact.eval_set == "prior"
+        ]
+        .groupby("user_id")
+        .agg(
+            items=("product_id", "size"),
+            reorder_ratio=("reordered", "mean")
         )
+    )
 
+    uf = uf.join(li).dropna()
 
-        c1.plotly_chart(
-            style(fig, 360),
-            use_container_width=True
-        )
+    uf["avg_basket"] = (
+        uf["items"]
+        / uf["frequency"]
+    )
 
+    X = np.column_stack(
+        [
+            uf.recency,
+            np.log1p(uf.frequency),
+            np.log1p(uf["items"]),
+            uf.avg_gap_days,
+            uf.avg_basket,
+            uf.reorder_ratio
+        ]
+    )
 
-        t = seg[
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import StandardScaler
+
+    Xs = StandardScaler().fit_transform(X)
+
+    lab = KMeans(
+        n_clusters=k_sel,
+        n_init=5,
+        random_state=42
+    ).fit_predict(Xs)
+
+    uf["cụm"] = (
+        "Cụm "
+        + lab.astype(str)
+    )
+
+    fig = px.scatter(
+        uf.sample(
+            min(4000, len(uf)),
+            random_state=1
+        ),
+        x="frequency",
+        y="avg_basket",
+        color="cụm",
+        log_x=True,
+        color_discrete_sequence=SERIES,
+        opacity=0.7,
+        category_orders={
+            "cụm": [
+                f"Cụm {i}"
+                for i in range(k_sel)
+            ]
+        },
+        title=(
+            "Phân bố khách hàng mẫu "
+            "theo số đơn × giỏ hàng TB "
+            f"(k = {k_sel})"
+        ),
+        labels={
+            "frequency": "Số đơn (log)",
+            "avg_basket": "Giỏ hàng TB"
+        }
+    )
+
+    st.plotly_chart(
+        style(fig, 420),
+        use_container_width=True
+    )
+
+    st.dataframe(
+        uf.groupby("cụm")[
             [
-                "segment",
-                "n_users",
-                "share",
                 "recency",
                 "frequency",
-                "monetary_items",
+                "items",
                 "avg_gap_days",
                 "avg_basket",
                 "reorder_ratio"
             ]
-        ].copy()
-
-
-        t.columns = [
-            "Phân khúc",
-            "Số KH",
-            "Tỷ trọng %",
-            "Recency (ngày)",
-            "Số đơn",
-            "Tổng SP đã mua",
-            "Chu kỳ TB (ngày)",
-            "Giỏ TB",
-            "Tỷ lệ mua lại"
         ]
-
-
-        c2.dataframe(
-            t.round(2),
-            hide_index=True,
-            use_container_width=True
-        )
-
-
-        st.markdown(
-            "##### 🎯 Chiến lược marketing gợi ý"
-        )
-
-
-        if "strategy" in seg.columns:
-
-            for _, r in seg.iterrows():
-
-                st.markdown(
-                    f"- **{r['segment']}** "
-                    f"({r['share']:.1f}%): "
-                    f"{r['strategy']}"
-                )
-
-
-        st.markdown(
-            "##### 🧪 Thử nghiệm phân cụm lại "
-            "trên mẫu 10% (scikit-learn)"
-        )
-
-
-        k_sel = st.slider(
-            "Số cụm k",
-            2,
-            8,
-            4
-        )
-
-
-        ptr = orders[
-            orders.eval_set == "prior"
-        ]
-
-
-        uf = (
-            ptr
-            .groupby("user_id")
-            .agg(
-                frequency=(
-                    "order_id",
-                    "size"
-                ),
-                avg_gap_days=(
-                    "days_since_prior_order",
-                    "mean"
-                )
-            )
-        )
-
-
-        future_orders = orders[
-            orders.eval_set != "prior"
-        ]
-
-
-        if len(future_orders):
-
-            recency_data = (
-                future_orders
-                .set_index("user_id")[
-                    "days_since_prior_order"
-                ]
-                .rename("recency")
-            )
-
-            uf = uf.join(
-                recency_data
-            )
-
-
-        li = (
-            fact[
-                fact.eval_set == "prior"
-            ]
-            .groupby("user_id")
-            .agg(
-                items=(
-                    "product_id",
-                    "size"
-                ),
-                reorder_ratio=(
-                    "reordered",
-                    "mean"
-                )
-            )
-        )
-
-
-        uf = uf.join(
-            li
-        ).dropna()
-
-
-        if len(uf) >= k_sel:
-
-            uf["avg_basket"] = (
-                uf["items"]
-                /
-                uf["frequency"]
-            )
-
-
-            X = np.column_stack(
-                [
-                    uf.recency,
-                    np.log1p(
-                        uf.frequency
-                    ),
-                    np.log1p(
-                        uf["items"]
-                    ),
-                    uf.avg_gap_days,
-                    uf.avg_basket,
-                    uf.reorder_ratio
-                ]
-            )
-
-
-            from sklearn.cluster import KMeans
-            from sklearn.preprocessing import StandardScaler
-
-
-            Xs = (
-                StandardScaler()
-                .fit_transform(X)
-            )
-
-
-            lab = (
-                KMeans(
-                    n_clusters=k_sel,
-                    n_init=5,
-                    random_state=42
-                )
-                .fit_predict(Xs)
-            )
-
-
-            uf["cụm"] = (
-                "Cụm "
-                + lab.astype(str)
-            )
-
-
-            fig = px.scatter(
-                uf.sample(
-                    min(
-                        4000,
-                        len(uf)
-                    ),
-                    random_state=1
-                ),
-                x="frequency",
-                y="avg_basket",
-                color="cụm",
-                log_x=True,
-                color_discrete_sequence=SERIES,
-                opacity=0.7,
-                category_orders={
-                    "cụm": [
-                        f"Cụm {i}"
-                        for i in range(k_sel)
-                    ]
-                },
-                title=(
-                    "Phân bố khách hàng mẫu "
-                    "theo số đơn × giỏ hàng TB "
-                    f"(k = {k_sel})"
-                ),
-                labels={
-                    "frequency": "Số đơn (log)",
-                    "avg_basket": "Giỏ hàng TB"
-                }
-            )
-
-
-            st.plotly_chart(
-                style(fig, 420),
-                use_container_width=True
-            )
-
-
-            st.dataframe(
-                uf.groupby("cụm")[
-                    [
-                        "recency",
-                        "frequency",
-                        "items",
-                        "avg_gap_days",
-                        "avg_basket",
-                        "reorder_ratio"
-                    ]
-                ]
-                .mean()
-                .round(2)
-                .join(
-                    uf["cụm"]
-                    .value_counts()
-                    .rename("số KH")
-                ),
-                use_container_width=True
-            )
+        .mean()
+        .round(2)
+        .join(
+            uf["cụm"]
+            .value_counts()
+            .rename("số KH")
+        ),
+        use_container_width=True
+    )
 
 
 # ================================================================
-# RQ5 – DỰ ĐOÁN
+# RQ5
 # ================================================================
-
 with tabs[5]:
 
     st.subheader(
         "RQ5 – Dự đoán sản phẩm khách sẽ mua lại trong đơn kế tiếp"
     )
 
-
-    # ------------------------------------------------------------
-    # MODEL METRICS
-    # ------------------------------------------------------------
-
     m = S["metrics"]
 
+    c1, c2 = st.columns(
+        [1.1, 1]
+    )
 
-    if not m.empty:
-
-        c1, c2 = st.columns(
-            [1.1, 1]
-        )
-
-
-        required_metric_columns = [
-            "Mô hình",
+    mm = m.melt(
+        id_vars="Mô hình",
+        value_vars=[
             "AUC-ROC",
             "AUC-PR",
             "F1 tối ưu"
-        ]
-
-
-        if all(
-            col in m.columns
-            for col in required_metric_columns
-        ):
-
-            mm = m.melt(
-                id_vars="Mô hình",
-                value_vars=[
-                    "AUC-ROC",
-                    "AUC-PR",
-                    "F1 tối ưu"
-                ],
-                var_name="Chỉ số",
-                value_name="Giá trị"
-            )
-
-
-            fig = px.bar(
-                mm,
-                x="Chỉ số",
-                y="Giá trị",
-                color="Mô hình",
-                barmode="group",
-                color_discrete_sequence=SERIES,
-                title=(
-                    "So sánh mô hình trên tập kiểm tra "
-                    "(100% dữ liệu, chia theo khách hàng)"
-                )
-            )
-
-
-            fig.update_traces(
-                hovertemplate=(
-                    "%{x}: %{y:.4f}"
-                    "<extra></extra>"
-                )
-            )
-
-
-            c1.plotly_chart(
-                style(fig, 380),
-                use_container_width=True
-            )
-
-
-        imp = S["imp"]
-
-
-        if not imp.empty:
-
-            if (
-                "importance" in imp.columns
-                and
-                "feature_vi" in imp.columns
-            ):
-
-                imp = (
-                    imp
-                    .sort_values(
-                        "importance"
-                    )
-                )
-
-
-                fig = px.bar(
-                    imp,
-                    x="importance",
-                    y="feature_vi",
-                    orientation="h",
-                    color_discrete_sequence=[
-                        SERIES[0]
-                    ],
-                    title=(
-                        "Mức độ quan trọng "
-                        "của đặc trưng (GBT)"
-                    ),
-                    labels={
-                        "importance": "Importance",
-                        "feature_vi": ""
-                    }
-                )
-
-
-                c2.plotly_chart(
-                    style(fig, 380),
-                    use_container_width=True
-                )
-
-
-        st.dataframe(
-            m.round(4),
-            hide_index=True,
-            use_container_width=True
-        )
-
-
-    else:
-
-        st.warning(
-            "Không tìm thấy model_metrics_full.csv."
-        )
-
-
-    # ------------------------------------------------------------
-    # DEMO LOGISTIC REGRESSION
-    # ------------------------------------------------------------
-
-    st.markdown(
-        "##### 🔮 Demo: dự đoán giỏ hàng tiếp theo "
-        "của một khách hàng "
-        "(mô hình Logistic Regression)"
+        ],
+        var_name="Chỉ số",
+        value_name="Giá trị"
     )
 
+    fig = px.bar(
+        mm,
+        x="Chỉ số",
+        y="Giá trị",
+        color="Mô hình",
+        barmode="group",
+        color_discrete_sequence=SERIES,
+        title=(
+            "So sánh mô hình trên tập kiểm tra "
+            "(100% dữ liệu, chia theo khách hàng)"
+        )
+    )
 
-    # Nếu thiếu 2 file này thì không crash.
-    if (
-        S["lr"] is None
-        or
-        S["pfeat"] is None
-    ):
+    fig.update_traces(
+        hovertemplate="%{x}: %{y:.4f}<extra></extra>"
+    )
 
-        st.info(
-            "Phần Demo dự đoán cá nhân chưa được kích hoạt "
-            "vì GitHub chưa có đủ 2 file: "
-            "`lr_model.json` và "
-            "`product_features_full.parquet`. "
-            "Các phần RQ1–RQ5 khác vẫn hoạt động bình thường."
+    c1.plotly_chart(
+        style(fig, 380),
+        use_container_width=True
+    )
+
+    imp = (
+        S["imp"]
+        .sort_values("importance")
+    )
+
+    fig = px.bar(
+        imp,
+        x="importance",
+        y="feature_vi",
+        orientation="h",
+        color_discrete_sequence=[SERIES[0]],
+        title="Mức độ quan trọng của đặc trưng (GBT)",
+        labels={
+            "importance": "Importance",
+            "feature_vi": ""
+        }
+    )
+
+    c2.plotly_chart(
+        style(fig, 380),
+        use_container_width=True
+    )
+
+    st.dataframe(
+        m.round(4),
+        hide_index=True,
+        use_container_width=True
+    )
+
+    # ------------------------------------------------------------
+    # DEMO
+    # ------------------------------------------------------------
+    st.markdown(
+        "##### 🔮 Demo: dự đoán giỏ hàng tiếp theo "
+        "của một khách hàng (mô hình Logistic Regression)"
+    )
+
+    lr = S.get("lr")
+    pfeat = S.get("pfeat")
+
+    # Kiểm tra model và product features
+    if lr is None or pfeat is None:
+
+        st.error(
+            "Không thể kích hoạt Demo RQ5 vì ứng dụng "
+            "không đọc được dữ liệu mô hình."
         )
 
+        if lr is None:
+            st.write(
+                "❌ lr_model.json:",
+                S.get(
+                    "lr_error",
+                    "Không đọc được file"
+                )
+            )
+        else:
+            st.write(
+                "✅ lr_model.json: đã đọc được"
+            )
+
+        if pfeat is None:
+            st.write(
+                "❌ product_features_full.parquet:",
+                S.get(
+                    "pfeat_error",
+                    "Không đọc được file"
+                )
+            )
+        else:
+            st.write(
+                "✅ product_features_full.parquet: "
+                "đã đọc được"
+            )
 
     else:
 
-        lr = S["lr"]
-
-
+        # --------------------------------------------------------
+        # DANH SÁCH KHÁCH HÀNG CÓ ĐƠN TRAIN
+        # --------------------------------------------------------
         train_users = (
-            orders.loc[
+            orders
+            .loc[
                 orders.eval_set == "train",
                 "user_id"
             ]
@@ -1995,55 +1519,73 @@ with tabs[5]:
             .unique()
         )
 
+        if len(train_users) == 0:
 
-        if len(train_users):
+            st.warning(
+                "Không tìm thấy khách hàng có đơn kiểm chứng."
+            )
+
+        else:
 
             uid = st.selectbox(
-                "Chọn mã khách hàng "
-                "(khách có đơn kiểm chứng)",
+                "Chọn mã khách hàng (khách có đơn kiểm chứng)",
                 train_users[:2000]
             )
 
-
+            # ----------------------------------------------------
+            # LỊCH SỬ ĐƠN HÀNG CỦA KHÁCH
+            # ----------------------------------------------------
             uo = orders[
                 orders.user_id == uid
             ]
-
 
             train_orders = uo[
                 uo.eval_set == "train"
             ]
 
+            if len(train_orders) == 0:
 
-            if len(train_orders):
+                st.warning(
+                    "Khách hàng này không có đơn kiểm chứng."
+                )
+
+            else:
 
                 t_order = (
                     train_orders
                     .iloc[0]
                 )
 
-
+                # ------------------------------------------------
+                # LỊCH SỬ SẢN PHẨM
+                # ------------------------------------------------
                 up = fact[
                     (fact.user_id == uid)
                     &
-                    (
-                        fact.eval_set
-                        == "prior"
-                    )
+                    (fact.eval_set == "prior")
                 ]
 
+                prior_orders = uo[
+                    uo.eval_set == "prior"
+                ]
 
-                if len(up):
+                if len(prior_orders) == 0:
+
+                    st.warning(
+                        "Khách hàng này chưa có lịch sử đơn prior."
+                    )
+
+                else:
 
                     u_orders = int(
-                        uo[
-                            uo.eval_set == "prior"
-                        ]
+                        prior_orders
                         .order_number
                         .max()
                     )
 
-
+                    # --------------------------------------------
+                    # FEATURE KHÁCH HÀNG – SẢN PHẨM
+                    # --------------------------------------------
                     g = (
                         up
                         .groupby("product_id")
@@ -2068,115 +1610,118 @@ with tabs[5]:
                         .reset_index()
                     )
 
-
-                    g["u_orders"] = (
-                        u_orders
-                    )
-
+                    g["u_orders"] = u_orders
 
                     g["u_avg_gap"] = (
-                        uo[
-                            uo.eval_set
-                            == "prior"
-                        ]
+                        prior_orders
                         .days_since_prior_order
                         .mean()
                     )
-
 
                     g["u_reorder_ratio"] = (
                         up.reordered.mean()
                     )
 
-
                     g["u_avg_basket"] = (
                         len(up)
-                        /
-                        u_orders
-                        if u_orders
-                        else 0
+                        / u_orders
                     )
-
 
                     g["u_distinct"] = (
                         up.product_id
                         .nunique()
                     )
 
-
+                    # --------------------------------------------
+                    # PRODUCT FEATURES
+                    # --------------------------------------------
                     g = g.merge(
-                        S["pfeat"],
+                        pfeat,
                         on="product_id",
                         how="left"
                     )
 
-
+                    # --------------------------------------------
+                    # FEATURE ENGINEERING
+                    # --------------------------------------------
                     g["up_order_rate"] = (
                         g.up_orders
-                        /
-                        g.u_orders
+                        / g.u_orders
                     )
-
 
                     g["up_orders_since_last"] = (
                         g.u_orders
-                        -
-                        g.up_last
+                        - g.up_last
                     )
-
 
                     g["up_rate_since_first"] = (
                         g.up_orders
                         /
                         (
                             g.u_orders
-                            -
-                            g.up_first
+                            - g.up_first
                             + 1
                         )
                     )
 
-
-                    g[
-                        "t_days_since_prior"
-                    ] = (
-                        t_order
-                        .days_since_prior_order
+                    g["t_days_since_prior"] = (
+                        t_order.days_since_prior_order
                     )
 
-
-                    features = lr.get(
+                    # --------------------------------------------
+                    # ĐẢM BẢO ĐỦ FEATURE CHO MODEL
+                    # --------------------------------------------
+                    required_features = lr.get(
                         "features",
                         []
                     )
 
+                    missing_features = [
+                        f
+                        for f in required_features
+                        if f not in g.columns
+                    ]
 
-                    if features and all(
-                        feature in g.columns
-                        for feature in features
-                    ):
+                    if missing_features:
 
+                        st.error(
+                            "Thiếu feature mà mô hình Logistic Regression "
+                            "yêu cầu:"
+                        )
+
+                        st.write(
+                            missing_features
+                        )
+
+                    else:
+
+                        # ----------------------------------------
+                        # PREDICTION
+                        # ----------------------------------------
                         Xf = (
-                            g[features]
+                            g[
+                                required_features
+                            ]
                             .fillna(0)
                             .to_numpy(
                                 dtype=float
                             )
                         )
 
-
                         mean = np.array(
-                            lr["mean"]
+                            lr["mean"],
+                            dtype=float
                         )
 
                         std = np.array(
-                            lr["std"]
+                            lr["std"],
+                            dtype=float
                         )
 
                         coef = np.array(
-                            lr["coef"]
+                            lr["coef"],
+                            dtype=float
                         )
-
 
                         std = np.where(
                             std == 0,
@@ -2184,35 +1729,45 @@ with tabs[5]:
                             std
                         )
 
-
                         z = (
                             (
                                 Xf - mean
                             )
-                            /
-                            std
-                        ) @ coef + lr["intercept"]
+                            / std
+                        ) @ coef
 
+                        z = (
+                            z
+                            + float(
+                                lr["intercept"]
+                            )
+                        )
+
+                        # tránh overflow exp
+                        z = np.clip(
+                            z,
+                            -500,
+                            500
+                        )
 
                         g["xác suất"] = (
                             1
                             /
                             (
                                 1
-                                +
-                                np.exp(-z)
+                                + np.exp(-z)
                             )
                         )
 
-
+                        # ----------------------------------------
+                        # THỰC TẾ
+                        # ----------------------------------------
                         actual = set(
                             fact[
                                 fact.order_id
-                                ==
-                                t_order.order_id
+                                == t_order.order_id
                             ].product_id
                         )
-
 
                         g = g.merge(
                             prods[
@@ -2222,28 +1777,27 @@ with tabs[5]:
                                     "department_vi"
                                 ]
                             ],
-                            on="product_id"
+                            on="product_id",
+                            how="left"
                         )
-
 
                         g[
                             "thực tế đã mua lại?"
                         ] = np.where(
-                            g.product_id.isin(
-                                actual
-                            ),
+                            g.product_id.isin(actual),
                             "✅ có",
                             "—"
                         )
 
-
+                        # ----------------------------------------
+                        # TOP-K
+                        # ----------------------------------------
                         topk = st.slider(
                             "Số sản phẩm gợi ý (Top-K)",
                             5,
                             20,
                             10
                         )
-
 
                         res = (
                             g
@@ -2254,46 +1808,39 @@ with tabs[5]:
                             .head(topk)
                         )
 
-
                         hits = (
                             res[
                                 "thực tế đã mua lại?"
                             ]
-                            ==
-                            "✅ có"
+                            == "✅ có"
                         ).sum()
-
 
                         n_re = len(
                             actual
-                            &
-                            set(
+                            & set(
                                 g.product_id
                             )
                         )
 
-
+                        # ----------------------------------------
+                        # KPI
+                        # ----------------------------------------
                         c = st.columns(4)
-
 
                         c[0].metric(
                             "Số đơn trước đó",
                             u_orders
                         )
 
-
                         c[1].metric(
-                            "SP ứng viên "
-                            "(đã từng mua)",
+                            "SP ứng viên (đã từng mua)",
                             len(g)
                         )
-
 
                         c[2].metric(
                             f"Trúng trong Top-{topk}",
                             f"{hits}/{topk}"
                         )
-
 
                         c[3].metric(
                             "Recall@K "
@@ -2305,8 +1852,10 @@ with tabs[5]:
                             )
                         )
 
-
-                        st.dataframe(
+                        # ----------------------------------------
+                        # RESULT TABLE
+                        # ----------------------------------------
+                        result_table = (
                             res[
                                 [
                                     "product_name",
@@ -2326,7 +1875,28 @@ with tabs[5]:
                                         "Số đơn từ lần mua cuối"
                                 }
                             )
-                            .round(3),
+                        )
+
+                        result_table[
+                            "xác suất"
+                        ] = (
+                            result_table[
+                                "xác suất"
+                            ] * 100
+                        ).round(2)
+
+                        result_table = (
+                            result_table
+                            .rename(
+                                columns={
+                                    "xác suất":
+                                        "Xác suất mua lại (%)"
+                                }
+                            )
+                        )
+
+                        st.dataframe(
+                            result_table,
                             hide_index=True,
                             use_container_width=True
                         )
@@ -2335,11 +1905,11 @@ with tabs[5]:
 # ================================================================
 # FOOTER
 # ================================================================
-
 st.divider()
 
 st.caption(
     "© 2026 – Đào Thị Hồng Vân · "
     "Nguồn dữ liệu: Instacart Market Basket Analysis (Kaggle). "
-    "Pipeline Big Data: Apache Spark 4 · PySpark · Spark MLlib · Streamlit."
+    "Pipeline Big Data: Apache Spark 4 · PySpark · "
+    "Spark MLlib · Streamlit."
 )
