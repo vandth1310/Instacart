@@ -1,0 +1,32 @@
+{
+  "n_rules_product": 148,
+  "n_rules_aisle": 676,
+  "n_itemsets_product": 326,
+  "max_lift_product": 5.775753468017493,
+  "max_conf_product": 0.3786928775437344,
+  "share_lift_gt1": 98.64864864864865,
+  "top_rule": [
+    "Limes",
+    "Organic Cilantro",
+    0.005463666694246804,
+    0.12490489024156101,
+    5.775753468017493
+  ],
+  "top_conf_rule": [
+    "Organic Fuji Apple",
+    "Banana",
+    0.01055811207530995,
+    0.3786928775437344,
+    2.5762591093300085
+  ],
+  "n_pairs": 74,
+  "n_triples": 0,
+  "top_rule_2ante": null,
+  "top_aisle_rule": [
+    "fresh dips tapenades",
+    "chips pretzels",
+    0.03500883704929027,
+    0.3574005271347369,
+    2.135476984142351
+  ]
+}

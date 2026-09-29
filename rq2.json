@@ -1,0 +1,21 @@
+{
+  "top1": "Banana",
+  "top1_n": 491291,
+  "top20_share": 10.249309961061655,
+  "top_dept": "Rau củ quả tươi",
+  "top_dept_share": 29.23902837644496,
+  "top3_dept_share": 54.77926294089501,
+  "dept_rr_max": [
+    "Sữa & trứng",
+    0.6701612678378716
+  ],
+  "dept_rr_min": [
+    "Chăm sóc cá nhân",
+    0.3218631385576486
+  ],
+  "pos1_rr": 0.6793017387793429,
+  "pos30_rr": 0.43993715360253366,
+  "basket_mode": 5,
+  "basket_le10_pct": 62.17693942439563,
+  "pareto_80_pct_products": 9.173794907919895
+}

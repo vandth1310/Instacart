@@ -1,0 +1,12 @@
+{
+  "k": 4,
+  "silhouette": 0.37740267780339787,
+  "feats": [
+    "recency",
+    "log_frequency",
+    "log_monetary",
+    "avg_gap_days",
+    "avg_basket",
+    "reorder_ratio"
+  ]
+}
