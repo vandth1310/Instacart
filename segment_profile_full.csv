@@ -1,0 +1,5 @@
+cluster,n_users,recency,frequency,monetary_items,avg_gap_days,avg_basket,reorder_ratio,share,segment,strategy
+0,58311,26.34000445884996,5.48381951947317,35.36639742072679,21.648596569793405,6.939811101643384,0.27058997245901745,28.277621248345124,Thưa thớt – nguy cơ rời bỏ,"Chiến dịch win-back: voucher có thời hạn, nhắc lịch theo chu kỳ 30 ngày, khảo sát lý do rời bỏ."
+1,52281,9.154702473173812,37.2102675924332,384.90577838985485,8.74777882060452,10.645688396710318,0.6609028205654403,25.35340358568249,Trung thành tần suất cao,"Gói thành viên miễn phí giao hàng, gợi ý 'Mua lại nhanh' giỏ quen thuộc, ưu tiên khung giờ giao."
+2,51986,9.486438656561383,9.319335975070212,64.11268418420345,12.992503582802033,7.578726901823535,0.369698295372386,25.210344844308448,Tiềm năng – đang hình thành thói quen,"Nuôi dưỡng bằng nhắc mua lại sau 7 ngày, tích điểm theo chuỗi đơn liên tiếp, cá nhân hóa danh mục."
+3,43631,23.1624762210355,10.663106506841466,158.51156287960396,16.987926828319967,15.972229696585604,0.4488442212080283,21.158630321663942,Giỏ hàng lớn – mua theo đợt,"Combo gia đình/stock-up, ngưỡng miễn phí vận chuyển cao, gợi ý mua kèm từ luật kết hợp."

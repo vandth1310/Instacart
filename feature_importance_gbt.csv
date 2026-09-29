@@ -1,0 +1,16 @@
+feature,importance,feature_vi
+u_distinct,0.003565264695099652,Số SP khác nhau KH đã mua
+up_avg_cart_pos,0.00401900014837248,Vị trí TB trong giỏ (KH–SP)
+u_avg_basket,0.0043703209701734785,Giỏ hàng TB của KH
+p_users,0.004940769777453378,Số KH đã mua SP
+u_orders,0.008498314641551244,Số đơn của KH
+p_avg_cart_pos,0.0085345522850818,Vị trí TB trong giỏ của SP
+p_orders,0.013047326433193073,Độ phổ biến SP
+u_avg_gap,0.015090667507117725,Chu kỳ mua TB của KH
+u_reorder_ratio,0.0603153195553171,Tỷ lệ mua lại của KH
+up_orders,0.06202307234341982,Số lần KH đã mua SP
+t_days_since_prior,0.06578067330416978,Số ngày từ đơn trước (đơn cần dự đoán)
+p_reorder_rate,0.08364771666499103,Tỷ lệ mua lại của SP
+up_rate_since_first,0.17846974220759904,Tỷ lệ mua SP từ lần đầu
+up_orders_since_last,0.18957806501044155,Số đơn từ lần mua SP gần nhất
+up_order_rate,0.29811919445601903,Tỷ lệ đơn có SP
